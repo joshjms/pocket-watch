@@ -1,3 +1,3 @@
 # Pocket Watch
 
-REST API for running malicious code in a sandboxed environment.
+REST API for running unreliable code in a sandboxed environment.
