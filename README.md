@@ -1,8 +1,8 @@
 # Pocket Watch
 
-REST API for running unreliable code in a sandboxed environment.
+REST API for running unreliable code in a sandboxed environment. Everyone can make their very own Leetcode without compromising server security and health.
 
-> The service is still under development. 
+> The service is still under development. Please ⭐ this project to motivate the coding monkeys ❤️!
 
 ## Usage
 
