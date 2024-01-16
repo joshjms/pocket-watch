@@ -21,6 +21,18 @@ POST `/run`
 }
 ```
 
+#### Response
+```go
+{
+	Verdict []string `json:"verdict"` // OK, RE, TLE, CE
+	Stdout  []string `json:"stdout"`
+	Stderr  []string `json:"stderr"`
+	Time    []string `json:"time"`
+	Memory  []string `json:"memory"`
+}
+
+```
+
 ## Contributing
 TBD - For more information, contact me in Discord `joshjms`. 
 
