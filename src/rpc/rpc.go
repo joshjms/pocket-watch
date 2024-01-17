@@ -5,22 +5,22 @@ import (
 	"fmt"
 	"net"
 
-	pb "github.com/joshjms/pocket-watch/internal/judge"
+	pb "github.com/joshjms/pocket-watch/internal/watch"
 	"github.com/joshjms/pocket-watch/src/consts"
 	"github.com/joshjms/pocket-watch/src/isolate"
 	"github.com/joshjms/pocket-watch/src/models"
 	"google.golang.org/grpc"
 )
 
-type judgeServer struct {
-	pb.UnimplementedJudgeServer
+type watchServer struct {
+	pb.UnimplementedWatchServer
 }
 
-func newServer() *judgeServer {
-	return &judgeServer{}
+func newServer() *watchServer {
+	return &watchServer{}
 }
 
-func (*judgeServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.JudgeResponse, error) {
+func (*watchServer) Run(ctx context.Context, req *pb.WatchRequest) (*pb.WatchResponse, error) {
 	request := &models.Request{
 		Code:     req.Code,
 		Language: req.Language,
@@ -32,7 +32,7 @@ func (*judgeServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.JudgeR
 		return nil, err
 	}
 
-	var resp pb.JudgeResponse
+	var resp pb.WatchResponse
 
 	var int32Time []int32 = []int32{}
 	var int32Memory []int32 = []int32{}
@@ -66,7 +66,7 @@ func StartServer() error {
 
 	grpcServer := grpc.NewServer(opts...)
 
-	pb.RegisterJudgeServer(grpcServer, newServer())
+	pb.RegisterWatchServer(grpcServer, newServer())
 
 	go grpcServer.Serve(lis)
 
