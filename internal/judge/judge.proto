@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package main;
+
+option go_package = "github.com/joshjms/pocket-watch/internal/judge";
+
+service Judge {
+    rpc Judge(JudgeRequest) returns (JudgeResponse) {};
+}
+
+message JudgeRequest {
+    string code = 1;
+    string language = 2;
+    repeated string input = 3;
+}
+
+message JudgeResponse {
+    repeated string verdict = 1;
+    repeated string stdout = 2;
+    repeated string stderr = 3;
+    repeated int32 time = 4;
+    repeated int32 memory = 5;
+}
