@@ -56,18 +56,19 @@ func (*judgeServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.JudgeR
 
 func StartServer() error {
 	config := consts.GetConsts().RPCConfig
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", config.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if err != nil {
 		return err
 	}
 
 	var opts []grpc.ServerOption
+	// allows inse
 
 	grpcServer := grpc.NewServer(opts...)
 
 	pb.RegisterJudgeServer(grpcServer, newServer())
 
-	grpcServer.Serve(lis)
+	go grpcServer.Serve(lis)
 
 	return nil
 }
