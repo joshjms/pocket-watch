@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"sync"
 
@@ -35,9 +34,7 @@ func GetQueueManager() *QueueManager {
 }
 
 type IsolateInstance struct {
-	BoxId string
-	Dir   string
-
+	Box      *Box
 	Request  *IsolateRequest
 	Response *IsolateResponse
 }
@@ -46,15 +43,21 @@ type IsolateRequest struct {
 	Code     string
 	Language string
 	Stdin    []string
+	Options  *Options
 }
 
 type IsolateResponse struct {
 	Verdict []string
 	Stdout  []string
 	Stderr  []string
+	Time    []int
+	Memory  []int
+}
 
-	Time   []string
-	Memory []string
+type Options struct {
+	MemoryLimit int // in MB
+	TimeLimit   int // in seconds
+	Processes   int // number of processes allowed by the program; default 1
 }
 
 func GetBoxId() int {
@@ -86,30 +89,31 @@ func CreateInstance(req models.Request) (*IsolateInstance, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		boxId := GetBoxId()
-
-		if boxId == -1 {
-			log.Print("No box available")
-			panic("No box available")
+		box, err := CreateBox()
+		if err != nil {
+			log.Print(err)
+			return
 		}
 
 		instance = &IsolateInstance{
-			BoxId: strconv.Itoa(boxId),
-			Dir:   "/var/local/lib/isolate/" + strconv.Itoa(boxId) + "/box/",
+			Box: box,
 			Request: &IsolateRequest{
 				Code:     req.Code,
 				Language: req.Language,
 				Stdin:    req.Stdin,
+				Options: &Options{
+					MemoryLimit: 256,
+					TimeLimit:   1,
+					Processes:   1,
+				},
 			},
 			Response: &IsolateResponse{},
 		}
 
-		err := instance.Run()
+		err = instance.Run()
 		if err != nil {
 			log.Print(err)
 		}
-
-		ReleaseBoxId(boxId)
 
 		<-qm.Sem
 	}()
@@ -120,21 +124,16 @@ func CreateInstance(req models.Request) (*IsolateInstance, error) {
 }
 
 func (instance *IsolateInstance) Run() error {
-	initCleanupCmd := exec.Command("isolate", "--cleanup", "--cg", "--box-id="+instance.BoxId)
-	initCleanupCmd.Run()
-
-	initCmd := exec.Command("isolate", "--init", "--cg", "--box-id="+instance.BoxId)
-	logs, err := initCmd.CombinedOutput()
-	if err != nil {
-		log.Print("failed to init : ", err)
-		log.Print(string(logs))
+	b := instance.Box
+	if err := b.Init(); err != nil {
+		log.Print("failed to init box : ", err)
 		instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
 		return err
 	}
 
-	file, err := os.Create(instance.Dir + "src.cpp")
+	file, err := os.Create(b.Dir + "src.cpp")
 	if err != nil {
-		log.Print("failed to create : ", err)
+		log.Print("failed to create src.cpp file : ", err)
 		instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
 		return err
 	}
@@ -142,26 +141,21 @@ func (instance *IsolateInstance) Run() error {
 
 	file.WriteString(instance.Request.Code)
 
-	compileCmd := exec.Command("g++", "-o", instance.Dir+"exec", instance.Dir+"src.cpp")
-	logs, err = compileCmd.CombinedOutput()
-	if err != nil {
+	if err := b.Compile(); err != nil {
 		log.Print("failed to compile : ", err)
-		log.Print(string(logs))
-
 		instance.Response.Verdict = append(instance.Response.Verdict, "CE")
-
 		return err
 	}
 
-	if err := os.Mkdir("meta/"+instance.BoxId, 0777); err != nil {
+	if err := os.Mkdir("meta/"+b.Id, 0777); err != nil {
 		log.Print("failed to create meta dir : ", err)
-
 		instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
 		return err
 	}
 
 	for i, stdin := range instance.Request.Stdin {
-		stdinFile, err := os.Create(instance.Dir + strconv.Itoa(i) + ".in")
+		stdinDir := strconv.Itoa(i) + ".in"
+		stdinFile, err := os.Create(b.Dir + stdinDir)
 		if err != nil {
 			log.Print("failed to create .in file : ", err)
 			instance.HandleError()
@@ -171,7 +165,8 @@ func (instance *IsolateInstance) Run() error {
 
 		stdinFile.WriteString(stdin)
 
-		stdoutFile, err := os.Create(instance.Dir + strconv.Itoa(i) + ".out")
+		stdoutDir := strconv.Itoa(i) + ".out"
+		stdoutFile, err := os.Create(b.Dir + stdoutDir)
 		if err != nil {
 			log.Print("failed to create .out file : ", err)
 			instance.HandleError()
@@ -179,7 +174,8 @@ func (instance *IsolateInstance) Run() error {
 		}
 		defer stdoutFile.Close()
 
-		stderrFile, err := os.Create(instance.Dir + strconv.Itoa(i) + ".err")
+		stderrDir := strconv.Itoa(i) + ".err"
+		stderrFile, err := os.Create(b.Dir + stderrDir)
 		if err != nil {
 			log.Print("failed to create .err file : ", err)
 			instance.HandleError()
@@ -187,7 +183,8 @@ func (instance *IsolateInstance) Run() error {
 		}
 		defer stderrFile.Close()
 
-		metaFile, err := os.Create("meta/" + instance.BoxId + "/" + strconv.Itoa(i))
+		metaFileDir := "meta/" + b.Id + "/" + strconv.Itoa(i) + ".txt"
+		metaFile, err := os.Create(metaFileDir)
 		if err != nil {
 			log.Print("failed to create meta file : ", err)
 			instance.HandleError()
@@ -195,24 +192,7 @@ func (instance *IsolateInstance) Run() error {
 		}
 		defer metaFile.Close()
 
-		runCmd := exec.Command("isolate",
-			"--run",
-			"--box-id="+instance.BoxId,
-			"./exec",
-			"--cg",
-			"--stdin="+strconv.Itoa(i)+".in",
-			"--stdout="+strconv.Itoa(i)+".out",
-			"--stderr="+strconv.Itoa(i)+".err",
-			"--meta="+"meta/"+instance.BoxId+"/"+strconv.Itoa(i),
-			"--mem=262144", // 256 MB
-			"--time=1",
-			"--wall-time=2",
-			"--extra-time=0.5",
-			"--fsize=262144",
-			"--processes=1",
-		)
-
-		logs, err = runCmd.CombinedOutput()
+		logs, err := b.Run("./exec", instance.Request.Options, stdinDir, stdoutDir, stderrDir, metaFileDir)
 		if err != nil {
 			log.Print("failed to run : ", err)
 			instance.HandleError()
@@ -246,13 +226,32 @@ func (instance *IsolateInstance) Run() error {
 		runTime := mf.Get("time")
 		runMemory := mf.Get("cg-mem")
 
-		instance.Response.Time = append(instance.Response.Time, runTime)
-		instance.Response.Memory = append(instance.Response.Memory, runMemory)
+		runTimeFloat, err := strconv.ParseFloat(runTime, 32)
+		if err != nil {
+			log.Print("failed to convert runTime to int : ", err)
+			instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
+			return err
+		}
+		runTimeInt := int(runTimeFloat * 1000)
 
+		runMemoryInt, err := strconv.Atoi(runMemory)
+		if err != nil {
+			log.Print("failed to convert runMemory to int : ", err)
+			instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
+			return err
+		}
+
+		instance.Response.Time = append(instance.Response.Time, runTimeInt)
+		instance.Response.Memory = append(instance.Response.Memory, runMemoryInt)
 	}
 
-	if err := instance.Cleanup(); err != nil {
-		log.Print("failed to cleanup : ", err)
+	if err := b.Exit(); err != nil {
+		log.Print("failed to cleanup box : ", err)
+		instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
+		return err
+	}
+
+	if err := os.RemoveAll("meta/" + b.Id); err != nil {
 		return err
 	}
 
@@ -263,19 +262,6 @@ func (instance *IsolateInstance) HandleError() {
 	instance.Response.Verdict = append(instance.Response.Verdict, "RE")
 	instance.Response.Stdout = append(instance.Response.Stdout, "")
 	instance.Response.Stderr = append(instance.Response.Stderr, "")
-	instance.Response.Time = append(instance.Response.Time, "")
-	instance.Response.Memory = append(instance.Response.Memory, "")
-}
-
-func (instance *IsolateInstance) Cleanup() error {
-	cleanupCmd := exec.Command("isolate", "--cleanup", "--cg", "--box-id="+instance.BoxId)
-	if err := cleanupCmd.Run(); err != nil {
-		return err
-	}
-
-	if err := os.RemoveAll("meta/" + instance.BoxId); err != nil {
-		return err
-	}
-
-	return nil
+	instance.Response.Time = append(instance.Response.Time, -1)
+	instance.Response.Memory = append(instance.Response.Memory, -1)
 }

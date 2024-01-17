@@ -10,6 +10,6 @@ type Response struct {
 	Verdict []string `json:"verdict"`
 	Stdout  []string `json:"stdout"`
 	Stderr  []string `json:"stderr"`
-	Time    []string `json:"time"`
-	Memory  []string `json:"memory"`
+	Time    []int    `json:"time"`
+	Memory  []int    `json:"memory"`
 }
