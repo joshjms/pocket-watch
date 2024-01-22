@@ -124,6 +124,11 @@ func CreateInstance(req models.Request) (*IsolateInstance, error) {
 }
 
 func (instance *IsolateInstance) Run() error {
+	metaFilesDir := "meta/"
+	if fdir := os.Getenv("META_FILES_DIR"); fdir != "" {
+		metaFilesDir = fdir
+	}
+
 	b := instance.Box
 	if err := b.Init(); err != nil {
 		log.Print("failed to init box : ", err)
@@ -147,7 +152,7 @@ func (instance *IsolateInstance) Run() error {
 		return err
 	}
 
-	if err := os.Mkdir("meta/"+b.Id, 0777); err != nil {
+	if err := os.Mkdir(metaFilesDir+b.Id, 0777); err != nil {
 		log.Print("failed to create meta dir : ", err)
 		instance.Response.Verdict = append(instance.Response.Verdict, "Internal Error")
 		return err
@@ -158,7 +163,7 @@ func (instance *IsolateInstance) Run() error {
 		stdinFile, err := os.Create(b.Dir + stdinDir)
 		if err != nil {
 			log.Print("failed to create .in file : ", err)
-			instance.HandleError()
+			instance.HandleError("Internal Error")
 			continue
 		}
 		defer stdinFile.Close()
@@ -169,7 +174,7 @@ func (instance *IsolateInstance) Run() error {
 		stdoutFile, err := os.Create(b.Dir + stdoutDir)
 		if err != nil {
 			log.Print("failed to create .out file : ", err)
-			instance.HandleError()
+			instance.HandleError("Internal Error")
 			continue
 		}
 		defer stdoutFile.Close()
@@ -178,16 +183,16 @@ func (instance *IsolateInstance) Run() error {
 		stderrFile, err := os.Create(b.Dir + stderrDir)
 		if err != nil {
 			log.Print("failed to create .err file : ", err)
-			instance.HandleError()
+			instance.HandleError("Internal Error")
 			continue
 		}
 		defer stderrFile.Close()
 
-		metaFileDir := "meta/" + b.Id + "/" + strconv.Itoa(i) + ".txt"
+		metaFileDir := metaFilesDir + b.Id + "/" + strconv.Itoa(i) + ".txt"
 		metaFile, err := os.Create(metaFileDir)
 		if err != nil {
 			log.Print("failed to create meta file : ", err)
-			instance.HandleError()
+			instance.HandleError("Internal Error")
 			continue
 		}
 		defer metaFile.Close()
@@ -195,7 +200,13 @@ func (instance *IsolateInstance) Run() error {
 		logs, err := b.Run("./exec", instance.Request.Options, stdinDir, stdoutDir, stderrDir, metaFileDir)
 		if err != nil {
 			log.Print("failed to run : ", err)
-			instance.HandleError()
+			if string(logs) == "Time limit exceeded\n" {
+				instance.HandleError("TLE")
+			} else if string(logs) == "Memory limit exceeded\n" {
+				instance.HandleError("MLE")
+			} else {
+				instance.HandleError("RTE")
+			}
 			log.Print(string(logs))
 			continue
 		}
@@ -251,15 +262,15 @@ func (instance *IsolateInstance) Run() error {
 		return err
 	}
 
-	if err := os.RemoveAll("meta/" + b.Id); err != nil {
+	if err := os.RemoveAll(metaFilesDir + b.Id); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (instance *IsolateInstance) HandleError() {
-	instance.Response.Verdict = append(instance.Response.Verdict, "RE")
+func (instance *IsolateInstance) HandleError(verdict string) {
+	instance.Response.Verdict = append(instance.Response.Verdict, verdict)
 	instance.Response.Stdout = append(instance.Response.Stdout, "")
 	instance.Response.Stderr = append(instance.Response.Stderr, "")
 	instance.Response.Time = append(instance.Response.Time, -1)
