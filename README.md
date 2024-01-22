@@ -1,6 +1,6 @@
 # Pocket Watch
 
-REST API for running unreliable code in a sandboxed environment. Everyone can make their very own Leetcode without compromising server security and health.
+REST + gRPC API for running unreliable code in a sandboxed environment. Everyone can make their very own Leetcode without compromising server security and health.
 
 > The service is still under development. Please ⭐ this project to motivate the coding monkeys ❤️!
 
@@ -34,7 +34,10 @@ POST `/run`
 ```
 
 ## Contributing
-TBD - For more information, contact me in Discord `joshjms`. 
+TBD - For more information, contact me in Discord `joshjms`.
+
+## References
+- [pocket-api](https://github.com/sanstzu/pocket-api)
 
 ## People
 * [Josh](https://github.com/joshjms)
