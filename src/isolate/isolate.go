@@ -125,7 +125,7 @@ func CreateInstance(req models.Request) (*IsolateInstance, error) {
 
 func (instance *IsolateInstance) Run() error {
 	metaFilesDir := "meta/"
-	if fdir := os.Getenv("META_FILES_DIR"); fdir != "" {
+	if fdir := os.Getenv("PW_META_FILES_DIR"); fdir != "" {
 		metaFilesDir = fdir
 	}
 
