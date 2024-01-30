@@ -6,6 +6,16 @@ REST + gRPC API for running unreliable code in a sandboxed environment. Everyone
 
 ## Usage
 
+### Initialization
+
+#### Docker
+
+```bash
+docker run -p 8080:8080 \
+--privileged --cap-add SYS_ADMIN --security-opt seccomp=unconfined --cgroup-parent=docker.slice --cgroupns private --tmpfs /tmp --tmpfs /run --tmpfs /run/lock \
+pocketwatch:latest
+```
+
 ### Running Source Code (C++ Example)
 
 > Currently, only C/C++ source codes are supported. Add support for other languages in the future.
@@ -42,3 +52,4 @@ TBD - For more information, contact me in Discord `joshjms`.
 ## People
 * [Josh](https://github.com/joshjms)
 * [Clay](https://github.com/sanstzu)
+
